@@ -75,8 +75,23 @@ export const ChatProvider = ({ children }) => {
     }
   }, []);
 
+  const prevUserIdRef = useRef(null);
+
   useEffect(() => {
-    if (user) {
+    const currentUserId = user?._id?.toString() || null;
+    if (prevUserIdRef.current !== currentUserId) {
+      // User changed or logged out: completely wipe all chat and message state!
+      setConversations([]);
+      setActiveConversation(null);
+      setMessages([]);
+      setReplyingTo(null);
+      setSelectedMessages([]);
+      setTypingUsers({});
+      activeConvRef.current = null;
+      prevUserIdRef.current = currentUserId;
+    }
+
+    if (user && user._id) {
       loadConversations();
     }
   }, [user, loadConversations]);
@@ -87,6 +102,7 @@ export const ChatProvider = ({ children }) => {
       if (!conv) {
         setActiveConversation(null);
         setMessages([]);
+        activeConvRef.current = null;
         return;
       }
 
@@ -96,6 +112,7 @@ export const ChatProvider = ({ children }) => {
       }
 
       setActiveConversation(conv);
+      setMessages([]); // Clear previous messages immediately to prevent history flash
       setReplyingTo(null);
       setSelectedMessages([]);
       setLoadingMessages(true);

@@ -77,8 +77,10 @@ export const AuthProvider = ({ children }) => {
       // Continue client cleanup regardless of server logout error
     } finally {
       localStorage.removeItem('chatconnect_token');
+      localStorage.clear();
       setToken(null);
       setUser(null);
+      window.location.href = '/login';
     }
   };
 
