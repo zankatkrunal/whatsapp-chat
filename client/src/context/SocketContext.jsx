@@ -30,13 +30,23 @@ export const SocketProvider = ({ children }) => {
     // Socket.IO connection pointing to backend
     const envSocketUrl = import.meta.env.VITE_SOCKET_URL;
     const envApiUrl = import.meta.env.VITE_API_URL;
+    const isVercelHost = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+
+    // On Vercel Serverless, WebSockets are not supported natively without a dedicated server.
+    // If no dedicated WebSocket server is configured, activate Smart Cloud Sync mode.
+    if (!envSocketUrl && isVercelHost) {
+      setIsConnected(false);
+      setConnectionStatus('Online');
+      return;
+    }
+
     const socketUrl = envSocketUrl || (envApiUrl ? envApiUrl.replace(/\/api\/?$/, '') : window.location.origin);
     const socketInstance = io(socketUrl, {
       auth: { token },
       reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
       timeout: 20000,
       transports: ['websocket', 'polling'],
     });

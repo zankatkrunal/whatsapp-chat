@@ -224,6 +224,16 @@ export const ChatProvider = ({ children }) => {
           setMessages((prev) =>
             prev.map((m) => (m.clientTempId === tempId ? savedMsg : m))
           );
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c._id === activeConversation._id);
+            if (idx !== -1) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], lastMessage: savedMsg, lastMessageAt: savedMsg.createdAt };
+              const target = updated.splice(idx, 1)[0];
+              return [target, ...updated];
+            }
+            return prev;
+          });
         } catch (err) {
           console.error('[Chat] REST fallback send failed:', err.message);
         }
@@ -238,6 +248,7 @@ export const ChatProvider = ({ children }) => {
       if (!activeConversation || !fileData) return;
 
       const tempId = `temp-media-${Date.now()}`;
+
       let receiverId = null;
       if (!activeConversation.isGroup) {
         const otherParticipant = activeConversation.participants.find(
@@ -294,6 +305,26 @@ export const ChatProvider = ({ children }) => {
             }
           }
         );
+      } else {
+        try {
+          const savedMsg = await messageService.sendMessage({
+            conversationId: activeConversation._id,
+            receiverId,
+            content: caption,
+            messageType: fileData.messageType || 'document',
+            mediaUrl: fileData.fileUrl,
+            fileName: fileData.fileName,
+            fileSize: fileData.fileSize,
+            mimeType: fileData.mimeType,
+            replyTo: replyingTo ? replyingTo._id : null,
+            clientTempId: tempId,
+          });
+          setMessages((prev) =>
+            prev.map((m) => (m.clientTempId === tempId ? savedMsg : m))
+          );
+        } catch (err) {
+          console.error('[Chat] Media REST send failed:', err.message);
+        }
       }
     },
     [activeConversation, user, replyingTo, socket, isConnected]
@@ -601,6 +632,86 @@ export const ChatProvider = ({ children }) => {
       socket.off('conversationUpdated', handleConversationUpdated);
     };
   }, [socket, user, loadConversations]);
+
+  // 13. Smart Real-Time Polling Engine (Active whenever WebSockets are unavailable or on Vercel)
+  useEffect(() => {
+    if (!user) return;
+
+    // Fast active chat message polling (every 1.5 seconds)
+    const messagePollInterval = setInterval(async () => {
+      const currentActiveConv = activeConvRef.current;
+      if (!currentActiveConv) return;
+
+      try {
+        const res = await messageService.getMessages(currentActiveConv._id);
+        const serverMessages = res.messages || [];
+
+        setMessages((prev) => {
+          if (serverMessages.length === 0) return prev;
+
+          const prevMap = new Map(prev.map((m) => [m._id, m]));
+          let hasNewMessage = false;
+          let newIncomingFromOther = false;
+
+          for (const sMsg of serverMessages) {
+            const existing = prevMap.get(sMsg._id);
+            if (!existing) {
+              hasNewMessage = true;
+              const senderIdStr =
+                typeof sMsg.senderId === 'object' ? sMsg.senderId._id : sMsg.senderId;
+              if (senderIdStr && senderIdStr.toString() !== user._id.toString()) {
+                newIncomingFromOther = true;
+              }
+            } else if (existing.status !== sMsg.status) {
+              hasNewMessage = true;
+            }
+          }
+
+          if (newIncomingFromOther) {
+            playNotificationSound();
+          }
+
+          if (hasNewMessage || serverMessages.length !== prev.length) {
+            const tempMessages = prev.filter((m) => m._id && m._id.startsWith('temp-'));
+            const merged = [...serverMessages];
+            tempMessages.forEach((t) => {
+              if (!merged.some((m) => m.clientTempId === t.clientTempId)) {
+                merged.push(t);
+              }
+            });
+            return merged;
+          }
+
+          return prev;
+        });
+      } catch (err) {
+        // Silent background sync
+      }
+    }, 1500);
+
+    // Periodic conversation list sync (every 3.5 seconds)
+    const convPollInterval = setInterval(async () => {
+      try {
+        const data = await chatService.getConversations();
+        if (data && Array.isArray(data)) {
+          setConversations((prev) => {
+            const hasChanged =
+              data.length !== prev.length ||
+              JSON.stringify(data.map((c) => ({ id: c._id, unread: c.unreadCount, last: c.lastMessage?._id }))) !==
+                JSON.stringify(prev.map((c) => ({ id: c._id, unread: c.unreadCount, last: c.lastMessage?._id })));
+            return hasChanged ? data : prev;
+          });
+        }
+      } catch (err) {
+        // Silent background sync
+      }
+    }, 3500);
+
+    return () => {
+      clearInterval(messagePollInterval);
+      clearInterval(convPollInterval);
+    };
+  }, [user]);
 
   return (
     <ChatContext.Provider
