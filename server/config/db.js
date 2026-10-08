@@ -10,7 +10,9 @@ export const connectDB = async () => {
     return cachedConn;
   }
 
-  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/chatconnect';
+  const defaultAtlasUri =
+    'mongodb+srv://zankatkrunal33_db_user:t9GpEA2%402iWBhm_@cluster0.s8xqova.mongodb.net/chat?retryWrites=true&w=majority';
+  const uri = process.env.MONGODB_URI || defaultAtlasUri;
 
   try {
     cachedConn = mongoose.connect(uri, {
