@@ -1,25 +1,34 @@
 import mongoose from 'mongoose';
 
-let mongoMemoryServer = null;
+let cachedConn = null;
 
 export const connectDB = async () => {
   if (mongoose.connection && mongoose.connection.readyState >= 1) {
     return mongoose.connection;
   }
+  if (cachedConn) {
+    return cachedConn;
+  }
+
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/chatconnect';
 
   try {
-    // Attempt connecting to the configured MongoDB URI with a short timeout
-    const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 3000,
-      connectTimeoutMS: 3000,
+    cachedConn = mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
     });
+    const conn = await cachedConn;
     console.log(`[MongoDB] Connected successfully to: ${conn.connection.host}`);
     return conn;
   } catch (err) {
-    console.warn(`[MongoDB] Could not connect to primary URI (${uri}): ${err.message}`);
-    console.log('[MongoDB] Initializing in-memory MongoDB fallback (zero-config mode)...');
+    cachedConn = null;
+    console.warn(`[MongoDB] Could not connect to primary URI: ${err.message}`);
 
+    if (process.env.NODE_ENV === 'production') {
+      throw err;
+    }
+
+    console.log('[MongoDB] Initializing in-memory MongoDB fallback (zero-config mode)...');
     try {
       const { MongoMemoryServer } = await import('mongodb-memory-server');
       mongoMemoryServer = await MongoMemoryServer.create();
@@ -29,7 +38,7 @@ export const connectDB = async () => {
       return conn;
     } catch (memErr) {
       console.error('[MongoDB] In-memory database failed to start:', memErr.message);
-      process.exit(1);
+      throw err;
     }
   }
 };
