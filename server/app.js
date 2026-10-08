@@ -16,6 +16,7 @@ import healthRoutes from './routes/healthRoutes.js';
 
 import { notFound, errorHandler } from './middleware/errorMiddleware.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
+import { connectDB } from './config/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,17 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Serve frontend client build in production if available
 const clientDistPath = path.resolve(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
+
+// Ensure database connection is established for API requests
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('[DB Connection Middleware Error]', err.message);
+    next(err);
+  }
+});
 
 // General API Rate Limiting
 app.use('/api', apiLimiter);
