@@ -1,6 +1,5 @@
-import path from 'path';
-import fs from 'fs';
 import { cloudinary, isCloudinaryConfigured } from '../config/cloudinary.js';
+import streamifier from 'streamifier';
 
 // @desc    Upload media or document file
 // @route   POST /api/upload
@@ -15,7 +14,7 @@ export const uploadFile = async (req, res, next) => {
       });
     }
 
-    const { originalname, mimetype, size, filename, path: localFilePath } = req.file;
+    const { originalname, mimetype, size, buffer } = req.file;
 
     // Detect message type
     let messageType = 'document';
@@ -29,34 +28,41 @@ export const uploadFile = async (req, res, next) => {
 
     let fileUrl = '';
 
-    // If Cloudinary is configured, upload to Cloudinary
-    if (isCloudinaryConfigured) {
+    // If Cloudinary is configured, upload stream to Cloudinary
+    if (isCloudinaryConfigured && cloudinary) {
       try {
-        const resourceType = messageType === 'image' ? 'image' : messageType === 'video' || messageType === 'audio' ? 'video' : 'raw';
-        const uploadResult = await cloudinary.uploader.upload(localFilePath, {
-          folder: 'chatconnect',
-          resource_type: resourceType,
-          use_filename: true,
-        });
+        const resourceType =
+          messageType === 'image'
+            ? 'image'
+            : messageType === 'video' || messageType === 'audio'
+            ? 'video'
+            : 'raw';
 
+        const uploadStream = () =>
+          new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                folder: 'chatconnect',
+                resource_type: resourceType,
+                filename_override: originalname,
+              },
+              (err, result) => {
+                if (err) return reject(err);
+                resolve(result);
+              }
+            );
+            streamifier.createReadStream(buffer).pipe(stream);
+          });
+
+        const uploadResult = await uploadStream();
         fileUrl = uploadResult.secure_url;
-
-        // Clean up local file after cloud upload
-        if (fs.existsSync(localFilePath)) {
-          fs.unlinkSync(localFilePath);
-        }
       } catch (cloudErr) {
-        console.warn('[Storage] Cloudinary upload error, falling back to local storage URL:', cloudErr.message);
-        // Fall back to local URL
-        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-        const host = req.get('host');
-        fileUrl = `${protocol}://${host}/uploads/${filename}`;
+        console.warn('[Storage] Cloudinary upload error, using Data URI fallback:', cloudErr.message);
+        fileUrl = `data:${mimetype};base64,${buffer.toString('base64')}`;
       }
     } else {
-      // Local storage URL
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      fileUrl = `${protocol}://${host}/uploads/${filename}`;
+      // Direct Data URI format: 100% serverless compatible, zero disk dependencies
+      fileUrl = `data:${mimetype};base64,${buffer.toString('base64')}`;
     }
 
     res.status(200).json({
