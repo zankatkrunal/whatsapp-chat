@@ -41,6 +41,8 @@ export const protect = async (req, res, next) => {
     }
 
     req.user = user;
+    // Update presence timestamp periodically on active requests
+    User.findByIdAndUpdate(user._id, { isOnline: true, lastSeen: new Date() }).catch(() => {});
     next();
   } catch (err) {
     return res.status(401).json({

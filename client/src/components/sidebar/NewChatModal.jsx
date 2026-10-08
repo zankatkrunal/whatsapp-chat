@@ -97,8 +97,9 @@ export const NewChatModal = ({ isOpen, onClose }) => {
             </div>
           ) : users.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600, padding: '4px 8px' }}>
-                {searchTerm ? 'SEARCH RESULTS' : 'AVAILABLE CONTACTS'}
+              <div style={{ fontSize: '12px', color: 'var(--accent-green)', fontWeight: 600, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-green)' }} />
+                {searchTerm ? 'SEARCH RESULTS' : 'ONLINE USERS RIGHT NOW'}
               </div>
               {users.map((u) => (
                 <div
@@ -167,7 +168,8 @@ export const NewChatModal = ({ isOpen, onClose }) => {
           ) : (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
               <Users size={32} opacity={0.6} />
-              <span>No other registered users yet. Share this app link with your friends to chat!</span>
+              <span>No other users are online right now.</span>
+              <span style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>Type above to search for any contact by name or @username.</span>
             </div>
           )}
         </div>

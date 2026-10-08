@@ -27,23 +27,36 @@ export const searchUsers = async (req, res, next) => {
     };
 
     if (searchTerm) {
+      // User is searching by name or username
       const regex = new RegExp(searchTerm, 'i');
       queryFilter.$or = [
         { fullName: regex },
         { username: regex },
         { email: regex },
       ];
+    } else {
+      // No search query: ONLY show users currently ONLINE right now (active in last 2 minutes)
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      queryFilter.isOnline = true;
+      queryFilter.lastSeen = { $gte: twoMinutesAgo };
     }
 
     const users = await User.find(queryFilter)
       .select('_id fullName username email avatar about isOnline lastSeen')
-      .sort({ isOnline: -1, lastSeen: -1, updatedAt: -1 })
+      .sort({ lastSeen: -1, updatedAt: -1 })
       .limit(30)
       .lean();
 
+    // Map users to ensure isOnline accurately reflects real-time activity
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    const mappedUsers = users.map((u) => ({
+      ...u,
+      isOnline: Boolean(u.isOnline && u.lastSeen && new Date(u.lastSeen) >= twoMinutesAgo),
+    }));
+
     res.status(200).json({
       success: true,
-      users,
+      users: mappedUsers,
     });
   } catch (err) {
     next(err);
