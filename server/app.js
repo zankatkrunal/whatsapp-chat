@@ -60,29 +60,51 @@ const clientDistPath = path.resolve(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
 
 // Ensure database connection is established for API requests
-app.use('/api', async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (err) {
-    console.error('[DB Connection Middleware Error]', err.message);
-    next(err);
+app.use(async (req, res, next) => {
+  const isApiRequest =
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/auth') ||
+    req.path.startsWith('/users') ||
+    req.path.startsWith('/conversations') ||
+    req.path.startsWith('/messages') ||
+    req.path.startsWith('/groups') ||
+    req.path.startsWith('/blocked') ||
+    req.path.startsWith('/notifications') ||
+    req.path.startsWith('/upload') ||
+    req.path.startsWith('/health');
+
+  if (isApiRequest) {
+    try {
+      await connectDB();
+      return next();
+    } catch (err) {
+      console.error('[DB Connection Middleware Error]', err.message);
+      return next(err);
+    }
   }
+  next();
 });
 
 // General API Rate Limiting
-app.use('/api', apiLimiter);
+app.use(['/api', '/auth', '/users', '/conversations', '/messages', '/groups'], apiLimiter);
 
-// API Route Mounts
-app.use('/api/health', healthRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/conversations', conversationRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/blocked', blockRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/upload', uploadRoutes);
+// API Route Mounts (support both /api/* and direct /* paths)
+const apiRoutes = [
+  ['/health', healthRoutes],
+  ['/auth', authRoutes],
+  ['/users', userRoutes],
+  ['/conversations', conversationRoutes],
+  ['/messages', messageRoutes],
+  ['/groups', groupRoutes],
+  ['/blocked', blockRoutes],
+  ['/notifications', notificationRoutes],
+  ['/upload', uploadRoutes],
+];
+
+apiRoutes.forEach(([subPath, router]) => {
+  app.use(`/api${subPath}`, router);
+  app.use(subPath, router);
+});
 
 // Catch-all route to serve client index.html for React Router (SPA)
 app.get('*', (req, res, next) => {
